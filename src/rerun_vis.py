@@ -1,8 +1,9 @@
 import cv2
-import time
 import numpy as np
 import zmq
 import rerun as rr
+
+from utils.one_euro import OneEuroFilter
 
 ZMQ_PORT = 5555
 
@@ -38,6 +39,9 @@ def main():
 
     print(f">>> Rerun Visualizer connected to ZMQ bus: tcp://127.0.0.1:{ZMQ_PORT}")
     print(">>> Press Ctrl+C to stop")
+    
+    # def filter
+    one_euro = OneEuroFilter(freq=50, beta=0.03, min_cutoff=2.0, d_cutoff=1.0)
 
     try:
         while True:
@@ -59,19 +63,20 @@ def main():
                 joints3d = default_pose()
 
             joints3d = joints3d - joints3d[0]
+            joints_3d_filtered = one_euro.filter(joints3d)
 
             # joints
             rr.log(
                 "Hand/Joint_Rotations",
                 rr.Points3D(
-                    joints3d,
-                    colors=[[0, 200, 255] for _ in range(len(joints3d))],
+                    joints_3d_filtered,
+                    colors=[[0, 200, 255] for _ in range(len(joints_3d_filtered))],
                     radii=0.005
                 )
             )
 
             # links
-            bone_strips = [[joints3d[start], joints3d[end]] for start, end in SKELETON_LINKS]
+            bone_strips = [[joints_3d_filtered[start], joints_3d_filtered[end]] for start, end in SKELETON_LINKS]
             rr.log(
                 "Hand/Skeleton_Bones",
                 rr.LineStrips3D(
