@@ -36,7 +36,7 @@ def start_sender():
             sock.sendto(data, (SERVER_IP, SERVER_PORT))
 
     except KeyboardInterrupt:
-        print("Stopped")
+        print(">>> Stopped.")
     finally:
         cap.release()
         sock.close()
