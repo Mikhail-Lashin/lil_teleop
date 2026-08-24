@@ -48,3 +48,22 @@ chmod +x ./scripts/setup_server_env.sh
 ```bash
 python scripts/test_hamer.py
 ```
+
+## Prerequisites (CLIENT)
+
+- Windows 10/11, macOS, or Linux
+- Webcam
+- Python 3.10 (Conda)
+
+## Environment Setup (SERVER)
+
+Create and activate Conda environment:
+```bash
+conda create -n env_lilteleop_client python=3.10 -y
+conda activate env_lilteleop_client
+```
+
+Install lightweight dependencies:
+```bash
+pip install -r requirements_client.txt
+```
