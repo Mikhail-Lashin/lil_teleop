@@ -70,6 +70,7 @@ def main():
     print(f">>> Listening video on port: {INPUT_VIDEO_PORT}")
     print(f">>> Sending MANO params to client: {PROCESSING_IP}:{PROCESSING_PORT}")
     
+    fnull = open(os.devnull, 'w')
     t_start = time.perf_counter()
     counter = 0
     
@@ -87,7 +88,6 @@ def main():
             is_right = np.array([1])
             
             # inference
-            fnull = open(os.devnull, 'w')
             with contextlib.redirect_stdout(fnull):
                 dataset = ViTDetDataset(model_cfg, img_rgb, bboxes, is_right, rescale_factor=1.0)
                 sample = dataset[0]
@@ -103,15 +103,18 @@ def main():
             with torch.no_grad():
                 out = model(batch)
             
-            # mano params
+            # mano params and joints
+            joints3d = np.round(out['pred_keypoints_3d'][0].cpu().numpy(), 4)
             mano_pose_mats = out['pred_mano_params']['hand_pose'][0].cpu().numpy()
-            mano_pose_aa = [R.from_matrix(m.reshape(3, 3)).as_rotvec().tolist() for m in mano_pose_mats]
+            mano_pose_aa = np.round([R.from_matrix(m.reshape(3, 3)).as_rotvec() for m in mano_pose_mats], 4)
             
-            # Отправка JSON по UDP
+            # send msg
             msg = json.dumps({
+                'joints': joints3d.tolist(),
                 'mano_params': mano_pose_aa,
                 'timestamp': time.time()
-            }).encode('utf-8')
+            }, default=lambda x: x.tolist() if hasattr(x, 'tolist') else float(x)).encode('utf-8')
+            
             sock_out.sendto(msg, processing_addr)
             
             # FPS
