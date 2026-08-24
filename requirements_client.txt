@@ -4,4 +4,4 @@ scipy
 rerun-sdk
 pyzmq
 plusml-rh56dftp
-pymodbus==3.6.9
+pymodbus
