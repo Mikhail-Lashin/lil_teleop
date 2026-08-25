@@ -5,3 +5,5 @@ rerun-sdk
 pyzmq
 plusml-rh56dftp
 pymodbus
+yourdfpy
+trimesh
