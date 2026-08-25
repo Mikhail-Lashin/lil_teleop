@@ -43,19 +43,13 @@ chmod +x ./scripts/setup_server_env.sh
 ./scripts/setup_server_env.sh
 ```
 
-## Test (SERVER)
-
-```bash
-python scripts/test_hamer.py
-```
-
 ## Prerequisites (CLIENT)
 
 - Windows 10/11, macOS, or Linux
 - Webcam
 - Python 3.10 (Conda)
 
-## Environment Setup (SERVER)
+## Environment Setup (CLIENT)
 
 Create and activate Conda environment:
 ```bash
@@ -66,4 +60,39 @@ conda activate env_lilteleop_client
 Install lightweight dependencies:
 ```bash
 pip install -r requirements_client.txt
+```
+
+## Run pipeline
+
+On server:
+
+```bash
+python src/server.py
+```
+
+On client:
+
+```bash
+python src/client.py
+python src/rerun_vis.py
+```
+
+## Run tests
+
+Check HaMeR work on server:
+
+```bash
+python scripts/test_hamer.py
+```
+
+Check zmq bus on client (while pipeline is running):
+
+```bash
+python scripts/test_zmq.py
+```
+
+Check physical RH56DFTP robot hand on client (while it's connected to client via ethernet):
+
+```bash
+python scripts/test_rh56dftp.py
 ```
