@@ -68,7 +68,7 @@ def main():
     
     print(f">>> Server started.")
     print(f">>> Listening video on port: {INPUT_VIDEO_PORT}")
-    print(f">>> Sending MANO params to client: {PROCESSING_IP}:{PROCESSING_PORT}")
+    print(f">>> Ready to send MANO params to client: {PROCESSING_IP}:{PROCESSING_PORT}")
     
     fnull = open(os.devnull, 'w')
     t_start = time.perf_counter()
@@ -78,6 +78,7 @@ def main():
         while True:
             frame = receiver.get_frame()
             if frame is None:
+                print(">>> No incoming frames.\033[K", end='\r')
                 time.sleep(0.005)
                 continue
             
@@ -124,7 +125,7 @@ def main():
             
             if elapsed >= FPS_LOG_INTERVAL:
                 fps = counter / elapsed
-                print(f">>> FPS: {fps:4.1f}", end='\r')
+                print(f">>> FPS: {fps:4.1f}\033[K", end='\r')
                 counter = 0
                 t_start = t_now
 
