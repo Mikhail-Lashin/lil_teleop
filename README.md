@@ -96,3 +96,9 @@ Check physical RH56DFTP robot hand on client (while it's connected to client via
 ```bash
 python scripts/test_rh56dftp.py
 ```
+
+## Acknowledgments
+
+Retargeting logic and hand configs in src/retargeting/ are based on dex-retargeting by DexSuite.
+
+Source: https://github.com/dexsuite/dex-retargeting.git
