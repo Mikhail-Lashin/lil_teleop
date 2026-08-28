@@ -5,5 +5,10 @@ rerun-sdk
 pyzmq
 plusml-rh56dftp
 pymodbus
-yourdfpy
 trimesh
+nlopt
+torch
+pyyaml
+pytransform3d
+tyro
+anytree

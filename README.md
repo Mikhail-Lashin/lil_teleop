@@ -62,6 +62,11 @@ Install lightweight dependencies:
 pip install -r requirements_client.txt
 ```
 
+Install pinocchio:
+```bash
+conda install -c conda-forge pinocchio -y
+```
+
 ## Run pipeline
 
 On server:

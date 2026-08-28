@@ -7,12 +7,12 @@ import numpy as np
 import yaml
 import os
 
-from dex_retargeting import yourdfpy as urdf
-from dex_retargeting.kinematics_adaptor import MimicJointKinematicAdaptor
-from dex_retargeting.optimizer_utils import LPFilter
-from dex_retargeting.robot_wrapper import RobotWrapper
-from dex_retargeting.seq_retarget import SeqRetargeting
-from dex_retargeting.yourdfpy import DUMMY_JOINT_NAMES
+from retargeting import yourdfpy as urdf
+from retargeting.kinematics_adaptor import MimicJointKinematicAdaptor
+from retargeting.optimizer_utils import LPFilter
+from retargeting.robot_wrapper import RobotWrapper
+from retargeting.seq_retarget import SeqRetargeting
+from retargeting.yourdfpy import DUMMY_JOINT_NAMES
 
 
 @dataclass
@@ -165,7 +165,7 @@ class RetargetingConfig:
         return config
 
     def build(self) -> SeqRetargeting:
-        from dex_retargeting.optimizer import (
+        from retargeting.optimizer import (
             VectorOptimizer,
             PositionOptimizer,
             DexPilotOptimizer,

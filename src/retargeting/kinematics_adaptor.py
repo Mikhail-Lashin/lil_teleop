@@ -3,7 +3,7 @@ from typing import List
 
 import numpy as np
 
-from dex_retargeting.robot_wrapper import RobotWrapper
+from retargeting.robot_wrapper import RobotWrapper
 
 
 class KinematicAdaptor:
@@ -44,6 +44,32 @@ class KinematicAdaptor:
 
 
 class MimicJointKinematicAdaptor(KinematicAdaptor):
+    @staticmethod
+    def _resolve_mimic_chain(source_names, mimic_names, mults, offs, target_joints):
+        
+        mimic_map = {               # mimic -> (parent, multiplier, offset)
+            m: (s, mult, off)
+            for m, s, mult, off in zip(mimic_names, source_names, mults, offs)
+        }
+
+        resolved_sources, resolved_mults, resolved_offs = [], [], []
+
+        for src_name, mult, off in zip(source_names, mults, offs):
+            curr_src, curr_mult, curr_off = src_name, mult, off
+
+            # if parent is mimic too (not in target_joints, but in mimic_map)
+            while curr_src not in target_joints and curr_src in mimic_map:
+                parent_src, parent_mult, parent_off = mimic_map[curr_src]
+                curr_off = curr_off + curr_mult * parent_off
+                curr_mult = curr_mult * parent_mult
+                curr_src = parent_src
+
+            resolved_sources.append(curr_src)
+            resolved_mults.append(curr_mult)
+            resolved_offs.append(curr_off)
+
+        return resolved_sources, resolved_mults, resolved_offs
+    
     def __init__(
         self,
         robot: RobotWrapper,
@@ -55,8 +81,13 @@ class MimicJointKinematicAdaptor(KinematicAdaptor):
     ):
         super().__init__(robot, target_joint_names)
 
-        self.multipliers = np.array(multipliers)
-        self.offsets = np.array(offsets)
+        # accounting mimic joint chains
+        source_joint_names, mults, offs = self._resolve_mimic_chain(
+            source_joint_names, mimic_joint_names, multipliers, offsets, self.target_joint_names
+        )
+
+        self.multipliers = np.array(mults)
+        self.offsets = np.array(offs)
 
         # Joint name check
         union_set = set(mimic_joint_names).intersection(set(target_joint_names))
