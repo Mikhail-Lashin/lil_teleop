@@ -13,9 +13,9 @@ from retargeting.optimizer_utils import LPFilter
 from retargeting.robot_wrapper import RobotWrapper
 from retargeting.seq_retarget import SeqRetargeting
 
-DUMMY_JOINT_NAMES = [f"dummy_{name}_translation_joint" for name in "xyz"] + [
+'''DUMMY_JOINT_NAMES = [f"dummy_{name}_translation_joint" for name in "xyz"] + [
     f"dummy_{name}_rotation_joint" for name in "xyz"
-]
+]'''
 
 
 @dataclass
@@ -24,7 +24,7 @@ class RetargetingConfig:
     urdf_path: str
 
     # Whether to add free joint to the root of the robot. Free joint enable the robot hand move freely in the space
-    add_dummy_free_joint: bool = False
+    # add_dummy_free_joint: bool = False
 
     # Source refers to the retargeting input, which usually corresponds to the human hand
     # The joint indices of human hand joint which corresponds to each link in the target_link_names
@@ -178,7 +178,7 @@ class RetargetingConfig:
         # Process the URDF with yourdfpy to better find file path
         robot_urdf = urdf.URDF.load(
             self.urdf_path,
-            add_dummy_free_joints=self.add_dummy_free_joint,
+            #add_dummy_free_joints=self.add_dummy_free_joint,
             build_scene_graph=False,
         )
         urdf_name = self.urdf_path.split(os.path.sep)[-1]
@@ -190,8 +190,8 @@ class RetargetingConfig:
         robot = RobotWrapper(temp_path)
 
         # Add 6D dummy joint to target joint names so that it will also be optimized
-        if self.add_dummy_free_joint and self.target_joint_names is not None:
-            self.target_joint_names = DUMMY_JOINT_NAMES + self.target_joint_names
+        '''if self.add_dummy_free_joint and self.target_joint_names is not None:
+            self.target_joint_names = DUMMY_JOINT_NAMES + self.target_joint_names'''
         joint_names = (
             self.target_joint_names
             if self.target_joint_names is not None
