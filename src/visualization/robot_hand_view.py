@@ -5,24 +5,23 @@ import contextlib
 import numpy as np
 import rerun as rr
 from scipy.spatial.transform import Rotation as R
-
-from retargeting.rh56dftp_retargeter_draft import RH56DFTPRetargeter
-from utils.one_euro import OneEuroFilter
+from yourdfpy import URDF
 
 logging.getLogger("yourdfpy").setLevel(logging.ERROR)
 
+MANO_TRANSFORM = np.array([
+    [ 0, -1,  0],
+    [ 1,  0,  0],
+    [ 0,  0, 1]
+])
+
 class RobotHandView:
     """Render robot hand in Rerun"""
-    def __init__(self, urdf_path, joints, retargeter, root_entity, freq=50, min_cutoff=2.0, beta=0.03, d_cutoff=1.0):
+    def __init__(self, urdf_path, retargeter, root_entity):
         self.root_entity = root_entity
-        self.retargeter = retargeter
-        self.robot = self.retargeter.robot
-        self.joints = joints
+        self.retargeter = retargeter  # SeqRetargeting object from dex-retargeting
+        self.robot = URDF.load(urdf_path)
         
-        self.filters = {
-            j_name: OneEuroFilter(freq=freq, min_cutoff=min_cutoff, beta=beta, d_cutoff=d_cutoff)
-            for j_name in self.joints
-        }
         self.fnull = open(os.devnull, 'w')
         self._load_meshes(urdf_path)
 
@@ -61,23 +60,30 @@ class RobotHandView:
                             except Exception:
                                 pass
 
-    def update(self, mano_params):
-        if mano_params is None:
+    def update(self, joints3d):
+        if joints3d is None:
             return
             
-        mano_array = np.array(mano_params)
-        mano_aa = [R.from_matrix(m).as_rotvec() for m in mano_array] if mano_array.ndim == 3 else mano_array
+        joints_array = np.array(joints3d)
+        joints_array = np.array(joints3d) - np.array(joints3d)[0]
+        joints_array = joints_array @ MANO_TRANSFORM.T
+        
+        optimizer = self.retargeter.optimizer
 
-        # compute angles
-        with contextlib.redirect_stdout(self.fnull):
-            robot_commands = self.retargeter.compute_robot_angles(mano_aa)
-            filtered_commands = {
-                j: self.filters[j].filter(val) if j in self.filters else val
-                for j, val in robot_commands.items()
-            }
-            self.robot.update_cfg(filtered_commands)
+        # compute operator vectors
+        if optimizer.retargeting_type == "POSITION":
+            ref_value = joints_array[optimizer.target_link_human_indices, :]
+        else:
+            origin_idx = optimizer.target_link_human_indices[0, :]
+            task_idx = optimizer.target_link_human_indices[1, :]
+            ref_value = joints_array[task_idx, :] - joints_array[origin_idx, :]
 
-        # move links
+        # compute robot angles and update
+        qpos = self.retargeter.retarget(ref_value)
+        qpos_dict = dict(zip(optimizer.robot.dof_joint_names, qpos))
+        self.robot.update_cfg(qpos_dict)
+
+        # move joints in rerun
         for link_name in self.robot.link_map.keys():
             try:
                 transform_matrix = self.robot.get_transform(link_name)
@@ -90,6 +96,6 @@ class RobotHandView:
                 )
             except Exception:
                 pass
-
+    
     def close(self):
         self.fnull.close()

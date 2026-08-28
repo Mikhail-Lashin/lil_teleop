@@ -1,3 +1,6 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import time
 import zmq
 import rerun as rr
@@ -7,8 +10,13 @@ from visualization.camera_view import CameraView
 from visualization.human_hand_view import HumanHandView
 from visualization.robot_hand_view import RobotHandView
 
-from retargeting.configs.rh56dftp_right_config_draft import URDF_PATH, FINGER_JOINTS
-from retargeting.rh56dftp_retargeter_draft import RH56DFTPRetargeter
+from pathlib import Path
+from retargeting.retargeting_config import RetargetingConfig
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_ROOT / "src" / "retargeting" / "configs" / "teleop" / "rh56dftp_right.yml"
+ASSETS_DIR = PROJECT_ROOT / "assets"
+URDF_PATH = ASSETS_DIR / "rh56dftp" / "rh56dftp_right.urdf"
 
 ZMQ_PORT = 5555
 
@@ -28,12 +36,13 @@ def main():
     camera_view = CameraView(entity_path=cam_origin)
     human_view = HumanHandView(freq=50, min_cutoff=2.0, beta=0.03,
                                root_entity=human_hand_origin)
+    
+    RetargetingConfig.set_default_urdf_dir(str(ASSETS_DIR))
+    retargeter = RetargetingConfig.load_from_file(str(CONFIG_PATH)).build()
     robot_view = RobotHandView(urdf_path=URDF_PATH,
-                               retargeter=RH56DFTPRetargeter(URDF_PATH),
-                               joints=FINGER_JOINTS,
-                               freq=50, min_cutoff=2.0, beta=0.03,
-                               root_entity=robot_hand_origin)
-
+                            retargeter=retargeter,
+                            root_entity=robot_hand_origin)
+    
     # connect to ZeroMQ bus
     context = zmq.Context()
     sub_socket = context.socket(zmq.SUB)
@@ -62,7 +71,7 @@ def main():
             metadata, image_bytes = data
             camera_view.update(image_bytes)
             human_view.update(metadata.get("joints"))
-            robot_view.update(metadata.get("mano_params"))
+            robot_view.update(metadata.get("joints"))
 
     except KeyboardInterrupt:
         print("\n>>> Dashboard Manager stopped.")
