@@ -12,3 +12,4 @@ pyyaml
 pytransform3d
 tyro
 anytree
+yourdfpy

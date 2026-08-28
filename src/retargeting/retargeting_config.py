@@ -7,12 +7,15 @@ import numpy as np
 import yaml
 import os
 
-from retargeting import yourdfpy as urdf
+import yourdfpy as urdf
 from retargeting.kinematics_adaptor import MimicJointKinematicAdaptor
 from retargeting.optimizer_utils import LPFilter
 from retargeting.robot_wrapper import RobotWrapper
 from retargeting.seq_retarget import SeqRetargeting
-from retargeting.yourdfpy import DUMMY_JOINT_NAMES
+
+DUMMY_JOINT_NAMES = [f"dummy_{name}_translation_joint" for name in "xyz"] + [
+    f"dummy_{name}_rotation_joint" for name in "xyz"
+]
 
 
 @dataclass

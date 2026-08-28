@@ -7,7 +7,7 @@ from visualization.camera_view import CameraView
 from visualization.human_hand_view import HumanHandView
 from visualization.robot_hand_view import RobotHandView
 
-from configs.rh56dftp_right_config import URDF_PATH, FINGER_JOINTS
+from retargeting.configs.rh56dftp_right_config_draft import URDF_PATH, FINGER_JOINTS
 from retargeting.rh56dftp_retargeter_draft import RH56DFTPRetargeter
 
 ZMQ_PORT = 5555
