@@ -16,7 +16,7 @@ from retargeting.retargeting_config import RetargetingConfig
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "src" / "retargeting" / "configs" / "teleop" / "rh56dftp_right.yml"
 ASSETS_DIR = PROJECT_ROOT / "assets"
-URDF_PATH = ASSETS_DIR / "rh56dftp" / "rh56dftp_right.urdf"
+URDF_PATH = ASSETS_DIR / "rh56dftp" / "rh56dftp_modified_right.urdf"
 
 ZMQ_PORT = 5555
 

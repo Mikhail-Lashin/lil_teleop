@@ -1,6 +1,6 @@
 retargeting:
   type: vector
-  urdf_path: rh56dftp/rh56dftp_right.urdf
+  urdf_path: rh56dftp/rh56dftp_modified_right.urdf
 
   # Target refers to the retargeting target, which is the robot hand
   target_joint_names: [ 'right_little_1_joint',
@@ -10,11 +10,11 @@ retargeting:
                         'right_thumb_1_joint',
                         'right_thumb_2_joint' ]
 
-  target_origin_link_names: [ "right_base_link",
-                              "right_base_link",
-                              "right_base_link",
-                              "right_base_link",
-                              "right_base_link" ]
+  target_origin_link_names: [ "human_wrist_link",
+                              "human_wrist_link",
+                              "human_wrist_link",
+                              "human_wrist_link",
+                              "human_wrist_link" ]
 
   target_task_link_names: [ "right_thumb_force_sensor_3",
                             "right_index_force_sensor_3",
