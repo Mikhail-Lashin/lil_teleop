@@ -47,7 +47,6 @@ class Receiver:
         self.running = False
         self.sock.close()
 
-
 def start_streamer():
     zmq_context = zmq.Context()
     pub_socket = zmq_context.socket(zmq.PUB)
@@ -85,7 +84,7 @@ def start_streamer():
             
             meta = {
                 'joints': data.get('joints') if data else None,
-                'mano_params': data.get('mano_params') if data else None,
+                'hand_rotation': data.get('hand_rotation') if data else None,
                 'timestamp': time.time()
             }
 

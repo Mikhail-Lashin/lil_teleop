@@ -9,7 +9,7 @@ import contextlib
 import os
 import numpy as np
 import torch
-from scipy.spatial.transform import Rotation as R
+
 
 from hamer.models import load_hamer, DEFAULT_CHECKPOINT
 from hamer.datasets.vitdet_dataset import ViTDetDataset
@@ -55,6 +55,37 @@ class UDPStreamReceiver:
         self.running = False
         self.sock.close()
 
+def get_hand_frame(keypoint_3d_array: np.ndarray) -> np.ndarray:
+        """
+        Originates from dex-retargeting repo
+        
+        Compute the 3D coordinate frame (orientation only) from detected 3d key points
+        :param points: keypoints detected with HaMeR. Order: [wrist, index, middle, pinky]
+        :return: the coordinate frame of wrist in MANO convention
+        """
+        assert keypoint_3d_array.shape == (21, 3)
+        points = keypoint_3d_array[[0, 5, 9], :]
+
+        # Compute vector from palm to the first joint of middle finger
+        x_vector = points[0] - points[2]
+
+        # Normal fitting with SVD
+        points = points - np.mean(points, axis=0, keepdims=True)
+        u, s, v = np.linalg.svd(points)
+
+        normal = v[2, :]
+
+        # Gram–Schmidt Orthonormalize
+        x = x_vector - np.sum(x_vector * normal) * normal
+        x = x / np.linalg.norm(x)
+        z = np.cross(x, normal)
+
+        # We assume that the vector from pinky to index is similar the z axis in MANO convention
+        if np.sum(z * (points[1] - points[2])) < 0:
+            normal *= -1
+            z *= -1
+        frame = np.stack([x, normal, z], axis=1)
+        return frame
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -104,15 +135,19 @@ def main():
             with torch.no_grad():
                 out = model(batch)
             
-            # mano params and joints
-            joints3d = np.round(out['pred_keypoints_3d'][0].cpu().numpy(), 4)
-            mano_pose_mats = out['pred_mano_params']['hand_pose'][0].cpu().numpy()
-            mano_pose_aa = np.round([R.from_matrix(m.reshape(3, 3)).as_rotvec() for m in mano_pose_mats], 4)
+            # get joint positions & wrist rotation matrix
+            joints3d_global = out['pred_keypoints_3d'][0].cpu().numpy() # joints in camera frame
+            joints3d_global = joints3d_global - joints3d_global[0]
+            
+            wrist_rot = get_hand_frame(joints3d_global)
+            
+            joints3d = np.round(joints3d_global @ wrist_rot, 4) # # joints in hand frame
+            wrist_rot = np.round(wrist_rot, 4)
             
             # send msg
             msg = json.dumps({
                 'joints': joints3d.tolist(),
-                'mano_params': mano_pose_aa,
+                'hand_rotation': wrist_rot.tolist(),
                 'timestamp': time.time()
             }, default=lambda x: x.tolist() if hasattr(x, 'tolist') else float(x)).encode('utf-8')
             

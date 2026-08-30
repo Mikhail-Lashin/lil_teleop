@@ -1,19 +1,18 @@
 import os
 import trimesh
 import logging
-import contextlib
 import numpy as np
 import rerun as rr
 from scipy.spatial.transform import Rotation as R
 from yourdfpy import URDF
 
-logging.getLogger("yourdfpy").setLevel(logging.ERROR)
-
-MANO_TRANSFORM = np.array([
-    [ 0, -1,  0],
-    [ 1,  0,  0],
-    [ 0,  0, 1]
+R_hamer2urdf = np.array([   # ROTATION ISSUE DEBUG for rh56dftp URDF
+    [-1, 0, 0],
+    [ 0,-1, 0],
+    [ 0, 0, 1] 
 ])
+
+logging.getLogger("yourdfpy").setLevel(logging.ERROR)
 
 class RobotHandView:
     """Render robot hand in Rerun"""
@@ -66,7 +65,7 @@ class RobotHandView:
             
         joints_array = np.array(joints3d)
         joints_array = np.array(joints3d) - np.array(joints3d)[0]
-        joints_array = joints_array @ MANO_TRANSFORM.T
+        joints_array = joints_array @ R_hamer2urdf.T    # ROTATION ISSUE DEBUG for rh56dftp URDF
         
         optimizer = self.retargeter.optimizer
 
@@ -77,7 +76,7 @@ class RobotHandView:
             origin_idx = optimizer.target_link_human_indices[0, :]
             task_idx = optimizer.target_link_human_indices[1, :]
             ref_value = joints_array[task_idx, :] - joints_array[origin_idx, :]
-
+        
         # compute robot angles and update
         qpos = self.retargeter.retarget(ref_value)
         qpos_dict = dict(zip(optimizer.robot.dof_joint_names, qpos))
@@ -96,6 +95,28 @@ class RobotHandView:
                 )
             except Exception:
                 pass
-    
+            
+        # draw target vectors
+        if hasattr(optimizer, "origin_link_names"):
+            origins = np.array([
+                self.robot.get_transform(name)[:3, 3] 
+                for name in optimizer.origin_link_names
+            ])
+        else:
+            origins = np.zeros_like(ref_value)
+        
+        self.draw_target_vectors(origins, ref_value)
+        
+    def draw_target_vectors(self, origins, vectors):
+        rr.log(
+            f"{self.root_entity}/Target_Vectors",
+            rr.Arrows3D(
+                origins=origins,
+                vectors=vectors,
+                colors=[[255, 255, 0] for _ in range(len(vectors))],
+                radii=0.002
+            )
+        )
+
     def close(self):
         self.fnull.close()
