@@ -136,8 +136,10 @@ def main():
         print("\n\n>>> Terminated by user.")
     except Exception as e:
         print(f"\n>>> ERROR: {e}")
-        print(f"\n>>> Check connection to {IP}:{PORT}")
-        print(f"\n>>> Try set PC IPv4 manually: ip {IP}, subnet 255.255.255.0")
+        print(f">>> Check connection to {IP}:{PORT}")
+        
+        subnet = IP.rsplit('.', 1)[0]
+        print(f">>> Try set PC IPv4 manually in same subnet (e.g. ip {subnet}.100, subnet 255.255.255.0)")
     finally:
         try:
             client.close()
