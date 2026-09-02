@@ -81,12 +81,8 @@ def start_streamer():
 
             # get json message from server
             data = server_receiver.get_data()
-            
-            meta = {
-                'joints': data.get('joints') if data else None,
-                'hand_rotation': data.get('hand_rotation') if data else None,
-                'timestamp': time.time()
-            }
+            meta = data.copy() if data is not None else {}
+            meta['timestamp'] = time.time()
 
             # publish data to local zmq bus (metadata + jpeg)
             pub_socket.send_json(meta, flags=zmq.SNDMORE)

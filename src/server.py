@@ -9,6 +9,9 @@ import contextlib
 import os
 import numpy as np
 import torch
+import tyro
+from typing import Literal
+from mediapipe.python.solutions import hands as mp_hands
 
 
 from hamer.models import load_hamer, DEFAULT_CHECKPOINT
@@ -87,11 +90,72 @@ def get_hand_frame(keypoint_3d_array: np.ndarray) -> np.ndarray:
         frame = np.stack([x, normal, z], axis=1)
         return frame
 
-def main():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f">>> Initialising HaMeR on {device}.")
-    model, model_cfg = load_hamer(DEFAULT_CHECKPOINT)
-    model = model.to(device).eval()
+def run_hamer(model, model_cfg, img_rgb, device):
+    h, w, _ = img_rgb.shape
+    bboxes = np.array([[0, 0, w, h]])
+    is_right = np.array([1])
+    
+    dataset = ViTDetDataset(model_cfg, img_rgb, bboxes, is_right, rescale_factor=1.0)
+    sample = dataset[0]
+        
+    batch = {}
+    for k, v in sample.items():
+        if isinstance(v, np.ndarray):
+            v = torch.from_numpy(v)
+        if isinstance(v, torch.Tensor):
+            v = v.unsqueeze(0).to(device)
+        batch[k] = v
+        
+    with torch.no_grad():
+        out = model(batch)
+    
+    # get joint positions & wrist rotation matrix
+    joints3d_global = out['pred_keypoints_3d'][0].cpu().numpy() # joints in camera frame
+    joints3d_global = joints3d_global - joints3d_global[0]
+    
+    wrist_rot = get_hand_frame(joints3d_global)
+    
+    joints3d = np.round(joints3d_global @ wrist_rot, 4) # # joints in hand frame
+    wrist_rot = np.round(wrist_rot, 4)
+    
+    return joints3d, wrist_rot
+
+def run_mediapipe(mp_hands_model, img_rgb):
+    results = mp_hands_model.process(img_rgb)
+    if not results.multi_hand_world_landmarks:
+        return None, None
+
+    # 3D coords in m
+    landmarks = results.multi_hand_world_landmarks[0].landmark
+    mp_joints3d_global = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
+    mp_joints3d_global = mp_joints3d_global - mp_joints3d_global[0]
+    
+    wrist_rot = get_hand_frame(mp_joints3d_global)
+    joints3d = np.round(mp_joints3d_global @ wrist_rot, 4)
+    wrist_rot = np.round(wrist_rot, 4)
+    
+    return joints3d, wrist_rot
+
+def main(
+    mode: Literal["hamer", "mediapipe", "combined"],
+):
+    # HaMeR init
+    if mode in ["hamer", "combined"]:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f">>> Initialising HaMeR on {device}.")
+        hamer_model, hamer_model_cfg = load_hamer(DEFAULT_CHECKPOINT)
+        hamer_model = hamer_model.to(device).eval()
+    
+    # mediapipe init
+    mp_hands_model = None
+    if mode in ["mediapipe", "combined"]:
+        print(f">>> Initialising MediaPipe.")
+        mp_hands_model = mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
     
     receiver = UDPStreamReceiver(INPUT_VIDEO_PORT)
     sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -107,50 +171,42 @@ def main():
     
     try:
         while True:
+            # frame preparation
             frame = receiver.get_frame()
             if frame is None:
                 print(">>> No incoming frames.\033[K", end='\r')
                 time.sleep(0.005)
                 continue
             
-            # frame preparation
             img_rgb = frame[:, :, ::-1]
-            h, w, _ = img_rgb.shape
-            bboxes = np.array([[0, 0, w, h]])
-            is_right = np.array([1])
+            payload = {'mode': mode, 'timestamp': time.time()}
             
-            # inference
-            with contextlib.redirect_stdout(fnull):
-                dataset = ViTDetDataset(model_cfg, img_rgb, bboxes, is_right, rescale_factor=1.0)
-                sample = dataset[0]
-            
-            batch = {}
-            for k, v in sample.items():
-                if isinstance(v, np.ndarray):
-                    v = torch.from_numpy(v)
-                if isinstance(v, torch.Tensor):
-                    v = v.unsqueeze(0).to(device)
-                batch[k] = v
+            # hamer inference
+            if mode in ["hamer", "combined"]:
+                with contextlib.redirect_stdout(fnull):
+                    h_j, h_rot = run_hamer(hamer_model, hamer_model_cfg, img_rgb, device)
                 
-            with torch.no_grad():
-                out = model(batch)
+                payload['hamer'] = {
+                    'joints': h_j.tolist() if h_j is not None else None,
+                    'hand_rotation': h_rot.tolist() if h_rot is not None else None
+                }
+                if mode == "hamer":
+                    payload['joints'] = payload['hamer']['joints']
+                    payload['hand_rotation'] = payload['hamer']['hand_rotation']
             
-            # get joint positions & wrist rotation matrix
-            joints3d_global = out['pred_keypoints_3d'][0].cpu().numpy() # joints in camera frame
-            joints3d_global = joints3d_global - joints3d_global[0]
+            # mediapipe inference
+            if mode in ["mediapipe", "combined"]:
+                mp_j, mp_rot = run_mediapipe(mp_hands_model, img_rgb)
+                
+                payload['mediapipe'] = {
+                    'joints': mp_j.tolist() if mp_j is not None else None,
+                    'hand_rotation': mp_rot.tolist() if mp_rot is not None else None
+                }
+                if mode == "mediapipe":
+                    payload['joints'] = payload['mediapipe']['joints']
+                    payload['hand_rotation'] = payload['mediapipe']['hand_rotation']
             
-            wrist_rot = get_hand_frame(joints3d_global)
-            
-            joints3d = np.round(joints3d_global @ wrist_rot, 4) # # joints in hand frame
-            wrist_rot = np.round(wrist_rot, 4)
-            
-            # send msg
-            msg = json.dumps({
-                'joints': joints3d.tolist(),
-                'hand_rotation': wrist_rot.tolist(),
-                'timestamp': time.time()
-            }, default=lambda x: x.tolist() if hasattr(x, 'tolist') else float(x)).encode('utf-8')
-            
+            msg = json.dumps(payload).encode('utf-8')
             sock_out.sendto(msg, processing_addr)
             
             # FPS
@@ -173,6 +229,8 @@ def main():
         receiver.stop()
         sock_out.close()
         fnull.close()
+        if mp_hands_model:
+            mp_hands_model.close()
 
 if __name__ == '__main__':
-    main()
+    tyro.cli(main)

@@ -17,3 +17,5 @@ mmcv==1.3.9
 chumpy @ git+https://github.com/mattloper/chumpy
 webdataset
 pytz
+tyro
+mediapipe==0.10.9
