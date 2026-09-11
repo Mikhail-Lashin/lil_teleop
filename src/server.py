@@ -12,6 +12,7 @@ import torch
 import tyro
 from typing import Literal
 from mediapipe.python.solutions import hands as mp_hands
+import zlib
 
 
 from hamer.models import load_hamer, DEFAULT_CHECKPOINT
@@ -25,6 +26,7 @@ PROCESSING_PORT = 50006
 
 FPS_LOG_INTERVAL = 1.0
 
+PRECISION = 4
 
 class UDPStreamReceiver:
     def __init__(self, port):
@@ -115,8 +117,8 @@ def run_hamer(model, model_cfg, img_rgb, device):
     
     wrist_rot = get_hand_frame(joints3d_global)
     
-    joints3d = np.round(joints3d_global @ wrist_rot, 4) # # joints in hand frame
-    wrist_rot = np.round(wrist_rot, 4)
+    joints3d = np.round(joints3d_global @ wrist_rot, PRECISION) # joints in hand frame
+    wrist_rot = np.round(wrist_rot, PRECISION)
     
     return joints3d, wrist_rot
 
@@ -131,8 +133,8 @@ def run_mediapipe(mp_hands_model, img_rgb):
     mp_joints3d_global = mp_joints3d_global - mp_joints3d_global[0]
     
     wrist_rot = get_hand_frame(mp_joints3d_global)
-    joints3d = np.round(mp_joints3d_global @ wrist_rot, 4)
-    wrist_rot = np.round(wrist_rot, 4)
+    joints3d = np.round(mp_joints3d_global @ wrist_rot, PRECISION)
+    wrist_rot = np.round(wrist_rot, PRECISION)
     
     return joints3d, wrist_rot
 
@@ -206,7 +208,8 @@ def main(
                     payload['joints'] = payload['mediapipe']['joints']
                     payload['hand_rotation'] = payload['mediapipe']['hand_rotation']
             
-            msg = json.dumps(payload).encode('utf-8')
+            msg = zlib.compress(json.dumps(payload).encode('utf-8'))
+            print(f">>> [DEBUG] Send {len(msg)} bytes to {processing_addr}", end='\r')
             sock_out.sendto(msg, processing_addr)
             
             # FPS

@@ -4,6 +4,7 @@ import socket
 import time
 import threading
 import zmq
+import zlib
 
 SERVER_IP = "10.144.208.248" 
 SERVER_PORT = 49102           # for video (client -> server)
@@ -30,8 +31,10 @@ class Receiver:
     def _recv_loop(self):
         while self.running:
             try:
-                data, _ = self.sock.recvfrom(65535)
-                msg = json.loads(data.decode('utf-8'))
+                data, addr = self.sock.recvfrom(65535)
+                print(f">>> [DEBUG] Get data: {len(data)} bytes from {addr}")
+                decompressed = zlib.decompress(data)
+                msg = json.loads(decompressed.decode('utf-8'))
                 with self.lock:
                     self.latest_data = msg
             except socket.timeout:
