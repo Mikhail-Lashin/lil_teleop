@@ -13,3 +13,4 @@ pytransform3d
 tyro
 anytree
 yourdfpy
+pyrealsense2

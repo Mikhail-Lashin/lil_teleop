@@ -5,6 +5,13 @@ import time
 import threading
 import zmq
 import zlib
+import numpy as np
+
+try:
+    import pyrealsense2 as rs
+    HAS_REALSENSE_LIB = True
+except ImportError:
+    HAS_REALSENSE_LIB = False
 
 SERVER_IP = "10.144.208.248" 
 SERVER_PORT = 49102           # for video (client -> server)
@@ -32,7 +39,7 @@ class Receiver:
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(65535)
-                print(f">>> [DEBUG] Get data: {len(data)} bytes from {addr}")
+                # print(f">>> [DEBUG] Get data: {len(data)} bytes from {addr}", end="\r")
                 decompressed = zlib.decompress(data)
                 msg = json.loads(decompressed.decode('utf-8'))
                 with self.lock:
@@ -50,14 +57,37 @@ class Receiver:
         self.running = False
         self.sock.close()
 
+def init_camera():
+    """
+    Try to init RealSense cam
+    """
+    if HAS_REALSENSE_LIB:
+        try:
+            pipeline = rs.pipeline()
+            config = rs.config()
+            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 60)
+            pipeline.start(config)
+            print(">>> [CAMERA] Successfully connected to Intel RealSense D435!")
+            return "realsense", pipeline
+        except Exception as e:
+            print(f">>> [CAMERA] RealSense initialization failed ({e}). Falling back to standard webcam...")
+
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FPS, 60)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    if not cap.isOpened():
+        raise RuntimeError(">>> [CAMERA] ERROR: No camera available!")
+    
+    print(">>> [CAMERA] Using standard webcam")
+    return "opencv", cap
+
+
 def start_streamer():
     zmq_context = zmq.Context()
     pub_socket = zmq_context.socket(zmq.PUB)
     pub_socket.bind(f"tcp://127.0.0.1:{ZMQ_PUB_PORT}")
     
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FPS, 60)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cam_type, cam_obj = init_camera()
 
     sock_gpu = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_receiver = Receiver(CLIENT_PORT)
@@ -69,10 +99,18 @@ def start_streamer():
     print(">>> Ctrl+C to stop")
 
     try:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret: 
-                break
+        while True:
+            # get frame
+            if cam_type == "realsense":
+                frames = cam_obj.wait_for_frames()
+                color_frame = frames.get_color_frame()
+                if not color_frame:
+                    continue
+                frame = np.asanyarray(color_frame.get_data())
+            else:
+                ret, frame = cam_obj.read()
+                if not ret:
+                    break
 
             # compress frame to jpeg & send to server
             frame_resized = cv2.resize(frame, RESOLUTION)
@@ -96,7 +134,10 @@ def start_streamer():
     except KeyboardInterrupt:
         print("\n>>> Streamer stopped by user.")
     finally:
-        cap.release()
+        if cam_type == "realsense":
+            cam_obj.stop()
+        else:
+            cam_obj.release()
         sock_gpu.close()
         server_receiver.stop()
         pub_socket.close()
