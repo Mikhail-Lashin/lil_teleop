@@ -6,6 +6,8 @@ import threading
 import zmq
 import zlib
 import numpy as np
+import tyro
+from typing import Optional
 
 try:
     import pyrealsense2 as rs
@@ -57,18 +59,31 @@ class Receiver:
         self.running = False
         self.sock.close()
 
-def init_camera():
+def init_camera(bag_file=None):
     """
-    Try to init RealSense cam
+    Try to init RealSense cam or read from .bag file
     """
     if HAS_REALSENSE_LIB:
         try:
             pipeline = rs.pipeline()
             config = rs.config()
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 60)
-            pipeline.start(config)
-            print(">>> [CAMERA] Successfully connected to Intel RealSense D435!")
+            
+            if bag_file:
+                config.enable_device_from_file(bag_file, repeat_playback=True)
+            else:
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 60)
+            
+            profile = pipeline.start(config)
+            
+            if bag_file:
+                playback = profile.get_device().as_playback()
+                playback.set_real_time(True)
+                print(f">>> [CAMERA] Successfully opened BAG file: {bag_file}")
+            else:
+                print(">>> [CAMERA] Successfully connected to Intel RealSense!")
+            
             return "realsense", pipeline
+        
         except Exception as e:
             print(f">>> [CAMERA] RealSense initialization failed ({e}). Falling back to standard webcam...")
 
@@ -81,13 +96,14 @@ def init_camera():
     print(">>> [CAMERA] Using standard webcam")
     return "opencv", cap
 
-
-def start_streamer():
+def main(
+     bag: Optional[str] = None,
+):
     zmq_context = zmq.Context()
     pub_socket = zmq_context.socket(zmq.PUB)
     pub_socket.bind(f"tcp://127.0.0.1:{ZMQ_PUB_PORT}")
     
-    cam_type, cam_obj = init_camera()
+    cam_type, cam_obj = init_camera(bag)
 
     sock_gpu = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_receiver = Receiver(CLIENT_PORT)
@@ -144,4 +160,4 @@ def start_streamer():
         zmq_context.term()
 
 if __name__ == "__main__":
-    start_streamer()
+    tyro.cli(main)
