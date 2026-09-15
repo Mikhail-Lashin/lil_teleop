@@ -4,7 +4,6 @@ from utils.one_euro import OneEuroFilter
 
 class HumanHandView:
     """Render operator hand skeleton in Rerun"""
-    
     HUMAN_SKELETON_LINKS = [
         (0, 1), (1, 2), (2, 3), (3, 4),             # thumb
         (0, 5), (5, 6), (6, 7), (7, 8),             # index
@@ -12,7 +11,6 @@ class HumanHandView:
         (0, 13), (13, 14), (14, 15), (15, 16),      # ring
         (0, 17), (17, 18), (18, 19), (19, 20)       # pinky
     ]
-    
     DEFAULT_POSE = np.array([
         [0.00,  0.00,  0.00],                                                                   #     0: wrist
         [0.02,  0.02,  0.00], [0.04,  0.04,  0.00], [0.06,  0.05,  0.00], [0.08,  0.05,  0.00], #   1-4: thumb

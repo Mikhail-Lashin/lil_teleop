@@ -97,7 +97,7 @@ def init_camera(bag_file=None):
     return "opencv", cap
 
 def main(
-     bag: Optional[str] = None,
+     bag: Optional[str] = None, # read video from bag file
 ):
     zmq_context = zmq.Context()
     pub_socket = zmq_context.socket(zmq.PUB)
