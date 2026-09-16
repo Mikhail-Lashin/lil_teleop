@@ -1,6 +1,7 @@
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+import sys
 import time
 import pybvh
 import numpy as np
@@ -9,11 +10,14 @@ from pathlib import Path
 import rerun as rr
 import rerun.blueprint as rrb
 
-from visualization.human_hand_view import HumanHandView
-from visualization.robot_hand_view import RobotHandView
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+    
+from visualization.rerun_views import HumanHandView, RobotHandView
 from retargeting.retargeting_config import RetargetingConfig
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ASSETS_DIR = PROJECT_ROOT / "assets"
 BVH_FILEPATH = PROJECT_ROOT / "test_data" / "bvh_misha_no_xyz_chr01_MAYA.bvh"
 

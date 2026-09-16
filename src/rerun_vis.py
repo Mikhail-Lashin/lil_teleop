@@ -6,9 +6,7 @@ import zmq
 import rerun as rr
 import rerun.blueprint as rrb
 
-from visualization.camera_view import CameraView
-from visualization.human_hand_view import HumanHandView
-from visualization.robot_hand_view import RobotHandView
+from visualization.rerun_views import CameraView, HumanHandView, RobotHandView
 
 from pathlib import Path
 from retargeting.retargeting_config import RetargetingConfig
