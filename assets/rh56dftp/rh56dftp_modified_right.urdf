@@ -35,7 +35,7 @@
   </link>
 
   <!-- DUMMY LINK + JOINT FOR TRANSLATION ISSUE FIX -->
-  <link name="human_wrist_link">
+  <link name="right_wrist_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -43,10 +43,10 @@
       </geometry>
     </visual>
   </link>
-  <joint name="human_wrist_joint" type="fixed">
+  <joint name="right_wrist_joint" type="fixed">
     <origin xyz="-0.015 0.0 0.05" rpy="0 0 0"/>
     <parent link="right_base_link"/>
-    <child link="human_wrist_link"/>
+    <child link="right_wrist_link"/>
   </joint>
 
   <link name="right_palm_force_sensor">

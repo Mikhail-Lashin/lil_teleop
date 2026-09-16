@@ -10,11 +10,11 @@ retargeting:
                         'right_thumb_1_joint',
                         'right_thumb_2_joint' ]
 
-  target_origin_link_names: [ "human_wrist_link",
-                              "human_wrist_link",
-                              "human_wrist_link",
-                              "human_wrist_link",
-                              "human_wrist_link" ]
+  target_origin_link_names: [ "right_wrist_link",
+                              "right_wrist_link",
+                              "right_wrist_link",
+                              "right_wrist_link",
+                              "right_wrist_link" ]
 
   target_task_link_names: [ "right_thumb_force_sensor_3",
                             "right_index_force_sensor_3",
