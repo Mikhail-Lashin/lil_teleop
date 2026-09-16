@@ -1,6 +1,8 @@
 # Dexterous hand teleoperation for RH56DFTP
 
-CV-pipeline for robotic hand teleoperation using HaMeR. The system captures video frames, estimates MANO 3D joint parameters and streams rotation vectors to a control endpoint.
+![Teleoperation Demo](https://github.com/user-attachments/assets/16e64ba8-e06f-4baf-946e-cc89f3693899)
+
+CV-pipeline for dexterous robotic hand teleoperation. Capture video frames, estimate MANO joint parameters and stream rotation vectors to robotic hand.
 
 ## Prerequisites (SERVER)
 
@@ -72,34 +74,15 @@ conda install -c conda-forge pinocchio -y
 On server:
 
 ```bash
-python src/server.py
+python src/handpos_server.py
 ```
 
 On client:
 
 ```bash
-python src/client.py
-python src/rerun_vis.py
-```
-
-## Run tests
-
-Check HaMeR work on server:
-
-```bash
-python scripts/test_hamer.py
-```
-
-Check zmq bus on client (while pipeline is running):
-
-```bash
-python scripts/test_zmq.py
-```
-
-Check physical RH56DFTP robot hand on client (while it's connected to client via ethernet):
-
-```bash
-python scripts/test_rh56dftp.py
+python src/handpos_client.py
+python src/rerun_vis.py         # for rerun visualization
+python src/run_rh56dftp.py      # for physical hand teleop
 ```
 
 ## Acknowledgments

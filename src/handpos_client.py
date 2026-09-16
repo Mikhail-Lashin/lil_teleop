@@ -123,6 +123,9 @@ def main(
                 if not color_frame:
                     continue
                 frame = np.asanyarray(color_frame.get_data())
+                
+                if bag:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             else:
                 ret, frame = cam_obj.read()
                 if not ret:

@@ -209,7 +209,7 @@ def main(
                     payload['hand_rotation'] = payload['mediapipe']['hand_rotation']
             
             msg = zlib.compress(json.dumps(payload).encode('utf-8'))
-            print(f">>> [DEBUG] Send {len(msg)} bytes to {processing_addr}", end='\r')
+            # print(f">>> [DEBUG] Send {len(msg)} bytes to {processing_addr}", end='\r')
             sock_out.sendto(msg, processing_addr)
             
             # FPS
