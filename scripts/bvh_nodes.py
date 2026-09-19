@@ -1,6 +1,6 @@
 import pybvh
 
-FILEPATH = r"test_data\bvh_misha_no_xyz_chr01_MAYA.bvh"
+FILEPATH = r"test_data\test.bvh"
 
 bvh = pybvh.read_bvh_file(FILEPATH)
 poses = bvh.node_positions(centered="skeleton")

@@ -19,7 +19,7 @@ from visualization.rerun_views import HumanHandView, RobotHandView
 from retargeting.retargeting_config import RetargetingConfig
 
 ASSETS_DIR = PROJECT_ROOT / "assets"
-BVH_FILEPATH = PROJECT_ROOT / "test_data" / "bvh_misha_no_xyz_chr01_MAYA.bvh"
+BVH_FILEPATH = PROJECT_ROOT / "test_data" / "test.bvh"
 
 CONFIG_PATH_RIGHT = PROJECT_ROOT / "src" / "retargeting" / "configs" / "teleop" / "rh56dftp_right.yml"
 CONFIG_PATH_LEFT = PROJECT_ROOT / "src" / "retargeting" / "configs" / "teleop" / "rh56dftp_left.yml"
