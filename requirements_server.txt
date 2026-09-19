@@ -19,3 +19,4 @@ webdataset
 pytz
 tyro
 mediapipe==0.10.9
+pip install viser

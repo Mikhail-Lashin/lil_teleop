@@ -8,6 +8,7 @@ import zlib
 import numpy as np
 import tyro
 from typing import Optional
+from utils.frame_processing import crop_to_square
 
 try:
     import pyrealsense2 as rs
@@ -131,9 +132,10 @@ def main(
                 if not ret:
                     break
 
-            # compress frame to jpeg & send to server
-            frame_resized = cv2.resize(frame, RESOLUTION)
-            _, frame_encoded = cv2.imencode('.jpg', frame_resized, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+            # crop & compress frame to jpeg & send to server
+            frame, _, _ = crop_to_square(frame)
+            frame = cv2.resize(frame, RESOLUTION)
+            _, frame_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
             frame_bytes = frame_encoded.tobytes()
 
             if len(frame_bytes) < 65000:
