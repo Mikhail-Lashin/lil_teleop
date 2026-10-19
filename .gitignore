@@ -12,3 +12,5 @@ dist/
 *.log
 *.bag
 *.bvh
+recorded_clips/
+*.mp4
