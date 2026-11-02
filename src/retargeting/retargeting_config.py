@@ -65,7 +65,7 @@ class RetargetingConfig:
     # Low pass filter
     low_pass_alpha: float = 0.1
 
-    _TYPE = ["vector", "position", "dexpilot"]
+    _TYPE = ["vector", "position", "dexpilot", "inspire_lut"]
     _DEFAULT_URDF_DIR = "./"
 
     def __post_init__(self):
@@ -172,6 +172,7 @@ class RetargetingConfig:
             VectorOptimizer,
             PositionOptimizer,
             DexPilotOptimizer,
+            InspireLUT1800Optimizer,
         )
         import tempfile
 
@@ -228,6 +229,16 @@ class RetargetingConfig:
                 scaling=self.scaling_factor,
                 project_dist=self.project_dist,
                 escape_dist=self.escape_dist,
+            )
+        elif self.type.lower() == "inspire_lut":
+            optimizer = InspireLUT1800Optimizer(
+                robot,
+                self.target_joint_names,
+                target_origin_link_names=self.target_origin_link_names,
+                target_task_link_names=self.target_task_link_names,
+                target_link_human_indices=self.target_link_human_indices,
+                scaling=self.scaling_factor,
+                norm_delta=self.normal_delta,
             )
         else:
             raise RuntimeError()

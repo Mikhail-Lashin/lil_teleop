@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import nlopt
 import numpy as np
@@ -575,3 +575,270 @@ class DexPilotOptimizer(Optimizer):
             return result
 
         return objective
+
+
+class InspireLUT1800Optimizer(Optimizer):
+    """Retargeting optimizer using precomputed Forward Kinematics Look-Up Tables (LUT).
+
+    This optimizer is specifically tailored for 6-DoF underactuated anthropomorphic hands
+    such as the Inspire Robots RH56DFTP (four 1-DoF fingers with mimic joints and one 2-DoF thumb).
+    Instead of running iterative non-linear optimization (SLSQP) at each step, it decouples
+    the kinematics per finger, evaluates a dense 1D LUT for the four fingers, and combines
+    a 2D coarse LUT search with a single Gauss-Newton refinement step for the thumb.
+
+    Args:
+        robot: RobotWrapper instance handling Pinocchio forward kinematics.
+        target_joint_names: List of active joint names to be optimized.
+        target_origin_link_names: List of origin link names for each reference vector.
+        target_task_link_names: List of task (fingertip) link names for each reference vector.
+        target_link_human_indices: Indices mapping human hand keypoints to the target vectors.
+        huber_delta: Smooth L1 loss threshold (kept for configuration compatibility).
+        norm_delta: Weight for temporal regularization toward the previous joint positions.
+        scaling: Scaling factor applied to the human reference vectors.
+        max_register_val: Resolution of the 1D actuator grid (default: 1800).
+        thumb_grid_size: Resolution of the 2D coarse grid for the 2-DoF thumb (default: 61).
+    """
+
+    retargeting_type = "VECTOR"
+
+    def __init__(
+        self,
+        robot: RobotWrapper,
+        target_joint_names: List[str],
+        target_origin_link_names: List[str],
+        target_task_link_names: List[str],
+        target_link_human_indices: np.ndarray,
+        huber_delta: float = 0.02,
+        norm_delta: float = 4e-3,
+        scaling: float = 1.0,
+        max_register_val: int = 1800,
+        thumb_grid_size: int = 61,
+    ):
+        super().__init__(robot, target_joint_names, target_link_human_indices)
+        self.origin_link_names = target_origin_link_names
+        self.task_link_names = target_task_link_names
+        self.huber_delta = huber_delta
+        self.norm_delta = norm_delta
+        self.scaling = scaling
+        self.max_register_val = max_register_val
+        self.thumb_grid_size = thumb_grid_size
+
+        # Computation cache for better performance
+        # For one link used in multiple vectors, e.g. hand palm, we do not want to compute it multiple times
+        self.computed_link_names = list(
+            set(target_origin_link_names).union(set(target_task_link_names))
+        )
+        self.origin_link_indices = [
+            self.computed_link_names.index(name) for name in target_origin_link_names
+        ]
+        self.task_link_indices = [
+            self.computed_link_names.index(name) for name in target_task_link_names
+        ]
+
+        # Sanity check and cache link indices that will involve in kinematics computation
+        self.computed_link_indices = self.get_link_indices(self.computed_link_names)
+        self.num_vecs = len(target_task_link_names)
+
+        # LUT state and buffers
+        self.joint_limits: Optional[np.ndarray] = None
+        self.lut_ready: bool = False
+        self.f1d_vec_indices: List[int] = []
+        self.f1d_joint_indices: List[int] = []
+        self.f1d_q_grids: Optional[np.ndarray] = None
+        self.f1d_vec_grids: Optional[np.ndarray] = None
+        self.thumb_group: Optional[Dict[str, np.ndarray]] = None
+
+    def set_joint_limit(self, joint_limits: np.ndarray, epsilon: float = 1e-3):
+        super().set_joint_limit(joint_limits, epsilon)
+        self.joint_limits = joint_limits.astype(np.float32)
+        self.lut_ready = False
+
+    def set_kinematic_adaptor(self, adaptor: KinematicAdaptor):
+        super().set_kinematic_adaptor(adaptor)
+        # Invalidate LUT so it is rebuilt with the mimic joint adaptor included
+        self.lut_ready = False
+
+    def _compute_vectors(self, q_target: np.ndarray, fixed_qpos: np.ndarray) -> np.ndarray:
+        """Compute 3D task vectors in the robot frame for a given target joint configuration."""
+        qpos = np.zeros(self.num_joints, dtype=np.float64)
+        qpos[self.idx_pin2fixed] = fixed_qpos
+        qpos[self.idx_pin2target] = q_target
+
+        # Kinematics forwarding for qpos (handles mimic joints)
+        if self.adaptor is not None:
+            qpos[:] = self.adaptor.forward_qpos(qpos)[:]
+
+        self.robot.compute_forward_kinematics(qpos)
+        target_link_poses = [
+            self.robot.get_link_pose(index) for index in self.computed_link_indices
+        ]
+        body_pos = np.array([pose[:3, 3] for pose in target_link_poses], dtype=np.float32)
+
+        origin_link_pos = body_pos[self.origin_link_indices, :]
+        task_link_pos = body_pos[self.task_link_indices, :]
+        return task_link_pos - origin_link_pos
+
+    def _build_lut(self, fixed_qpos: np.ndarray):
+        """Precompute 1D and 2D forward kinematics Look-Up Tables for decoupled finger joints."""
+        if self.joint_limits is None:
+            raise ValueError("Joint limits must be set via set_joint_limit() before retargeting.")
+
+        q_mid = 0.5 * (self.joint_limits[:, 0] + self.joint_limits[:, 1])
+        base_vecs = self._compute_vectors(q_mid, fixed_qpos)
+
+        # Automatically detect which joints affect which fingertip vector
+        vec_to_joints: List[List[int]] = [[] for _ in range(self.num_vecs)]
+        for j_idx in range(self.opt_dof):
+            q_pert = q_mid.copy()
+            q_pert[j_idx] = self.joint_limits[j_idx, 1]
+            diff = np.linalg.norm(
+                self._compute_vectors(q_pert, fixed_qpos) - base_vecs, axis=1
+            )
+            for v_i in range(self.num_vecs):
+                if diff[v_i] > 1e-4:
+                    vec_to_joints[v_i].append(j_idx)
+
+        n_1d = self.max_register_val + 1
+        n_2d = self.thumb_grid_size
+
+        self.f1d_vec_indices.clear()
+        self.f1d_joint_indices.clear()
+        f1d_q_list, f1d_vec_list = [], []
+        self.thumb_group = None
+
+        for v_i, j_list in enumerate(vec_to_joints):
+            if len(j_list) == 1:
+                # 1-DoF finger (index, middle, ring, pinky)
+                j0 = j_list[0]
+                q_grid = np.linspace(
+                    self.joint_limits[j0, 0], self.joint_limits[j0, 1], n_1d, dtype=np.float32
+                )
+                vec_grid = np.zeros((n_1d, 3), dtype=np.float32)
+                q_test = q_mid.copy()
+                for k, q_val in enumerate(q_grid):
+                    q_test[j0] = q_val
+                    vec_grid[k] = self._compute_vectors(q_test, fixed_qpos)[v_i]
+
+                self.f1d_vec_indices.append(v_i)
+                self.f1d_joint_indices.append(j0)
+                f1d_q_list.append(q_grid)
+                f1d_vec_list.append(vec_grid)
+
+            elif len(j_list) == 2:
+                # 2-DoF thumb (opposition/yaw and flexion/pitch)
+                j0, j1 = j_list[0], j_list[1]
+                q0_lin = np.linspace(
+                    self.joint_limits[j0, 0], self.joint_limits[j0, 1], n_2d, dtype=np.float32
+                )
+                q1_lin = np.linspace(
+                    self.joint_limits[j1, 0], self.joint_limits[j1, 1], n_2d, dtype=np.float32
+                )
+                vec_2d = np.zeros((n_2d, n_2d, 3), dtype=np.float32)
+                q_test = q_mid.copy()
+                for i0, val0 in enumerate(q0_lin):
+                    q_test[j0] = val0
+                    for i1, val1 in enumerate(q1_lin):
+                        q_test[j1] = val1
+                        vec_2d[i0, i1] = self._compute_vectors(q_test, fixed_qpos)[v_i]
+
+                g0, g1 = np.meshgrid(q0_lin, q1_lin, indexing="ij")
+                self.thumb_group = {
+                    "vec_idx": v_i,
+                    "joints": j_list,
+                    "q0_lin": q0_lin,
+                    "q1_lin": q1_lin,
+                    "vec_2d": vec_2d,
+                    "q_flat": np.stack([g0.ravel(), g1.ravel()], axis=1),
+                    "vec_flat": vec_2d.reshape(-1, 3),
+                }
+
+        if f1d_q_list:
+            self.f1d_q_grids = np.stack(f1d_q_list, axis=0)      # (num_1d_fingers, n_1d)
+            self.f1d_vec_grids = np.stack(f1d_vec_list, axis=0)  # (num_1d_fingers, n_1d, 3)
+
+        self.lut_ready = True
+
+    def retarget(self, ref_value: np.ndarray, fixed_qpos: np.ndarray, last_qpos: np.ndarray) -> np.ndarray:
+        """
+        Compute the retargeting results using precomputed kinematic LUT and local refinement.
+        Args:
+            ref_value: the reference vectors in cartesian space as input
+            fixed_qpos: the fixed value (not optimized) in retargeting, consistent with self.fixed_joint_names
+            last_qpos: the last retargeting results or initial value, consistent with function return
+
+        Returns: joint position of robot, the joint order and dim is consistent with self.target_joint_names
+        """
+        if len(fixed_qpos) != len(self.idx_pin2fixed):
+            raise ValueError(
+                f"Optimizer has {len(self.idx_pin2fixed)} joints but non_target_qpos {fixed_qpos} is given"
+            )
+
+        if not self.lut_ready:
+            self._build_lut(np.asarray(fixed_qpos, dtype=np.float64))
+
+        last_qpos_arr = np.asarray(last_qpos, dtype=np.float32)
+        target_vecs = np.asarray(ref_value, dtype=np.float32) * self.scaling
+        out_qpos = last_qpos_arr.copy()
+
+        # Vectorized 1D LUT search for all single-DoF fingers
+        if self.f1d_q_grids is not None and self.f1d_vec_grids is not None:
+            f_targets = target_vecs[self.f1d_vec_indices][:, None, :]
+            diff_fv = self.f1d_vec_grids - f_targets
+            pos_f_err = np.einsum("fki,fki->fk", diff_fv, diff_fv)
+            last_f_q = last_qpos_arr[self.f1d_joint_indices][:, None]
+            reg_f_err = self.norm_delta * ((self.f1d_q_grids - last_f_q) ** 2)
+            best_k = np.argmin(pos_f_err + reg_f_err, axis=1)
+            out_qpos[self.f1d_joint_indices] = self.f1d_q_grids[
+                np.arange(len(best_k)), best_k
+            ]
+
+        # 2D coarse LUT search + local Gauss-Newton refinement for the 2-DoF thumb
+        if self.thumb_group is not None:
+            g = self.thumb_group
+            j0, j1 = g["joints"]
+            t_vec = target_vecs[g["vec_idx"]]
+            last_q2 = np.array([last_qpos_arr[j0], last_qpos_arr[j1]], dtype=np.float32)
+
+            diff_v = g["vec_flat"] - t_vec
+            pos_err = np.einsum("ij,ij->i", diff_v, diff_v)
+            diff_q = g["q_flat"] - last_q2
+            reg_err = self.norm_delta * np.einsum("ij,ij->i", diff_q, diff_q)
+
+            flat_idx = int(np.argmin(pos_err + reg_err))
+            q0_lin, q1_lin, vec_2d = g["q0_lin"], g["q1_lin"], g["vec_2d"]
+            n0, n1 = len(q0_lin), len(q1_lin)
+            bi, bj = divmod(flat_idx, n1)
+
+            # Finite-difference local Jacobian around the best grid cell
+            i_next, i_prev = min(bi + 1, n0 - 1), max(bi - 1, 0)
+            j_next, j_prev = min(bj + 1, n1 - 1), max(bj - 1, 0)
+            dv_d0 = (vec_2d[i_next, bj] - vec_2d[i_prev, bj]) / (
+                q0_lin[i_next] - q0_lin[i_prev] + 1e-8
+            )
+            dv_d1 = (vec_2d[bi, j_next] - vec_2d[bi, j_prev]) / (
+                q1_lin[j_next] - q1_lin[j_prev] + 1e-8
+            )
+
+            jacobian_2d = np.column_stack([dv_d0, dv_d1])
+            residual = t_vec - vec_2d[bi, bj]
+            delta_q = np.linalg.solve(
+                jacobian_2d.T @ jacobian_2d + 1e-4 * np.eye(2, dtype=np.float32),
+                jacobian_2d.T @ residual,
+            )
+
+            step0, step1 = abs(q0_lin[1] - q0_lin[0]), abs(q1_lin[1] - q1_lin[0])
+            out_qpos[j0] = np.clip(
+                q0_lin[bi] + np.clip(delta_q[0], -step0, step0), q0_lin[0], q0_lin[-1]
+            )
+            out_qpos[j1] = np.clip(
+                q1_lin[bj] + np.clip(delta_q[1], -step1, step1), q1_lin[0], q1_lin[-1]
+            )
+
+        return out_qpos
+
+    def get_objective_function(
+        self, ref_value: np.ndarray, fixed_qpos: np.ndarray, last_qpos: np.ndarray
+    ):
+        raise NotImplementedError(
+            "InspireLUT1800Optimizer overrides retarget() directly and does not use NLopt objectives."
+        )

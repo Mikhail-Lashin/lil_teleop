@@ -1,5 +1,5 @@
 retargeting:
-  type: vector
+  type: inspire_lut
   urdf_path: rh56dftp/rh56dftp_modified_right.urdf
 
   # Target refers to the retargeting target, which is the robot hand
